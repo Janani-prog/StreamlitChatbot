@@ -13,7 +13,6 @@ EXCEL_FILE = 'ai_robotics_qa.xlsx'
 def load_qa_data(file_path):
     try:
         df = pd.read_excel(file_path)
-        # Ensure column names are stripped of whitespace and converted to lowercase
         df.columns = df.columns.str.strip().str.lower()
         if 'question' not in df.columns or 'answer' not in df.columns:
             st.error(f"Error: Excel file must contain 'Question' and 'Answer' columns. Found: {df.columns.tolist()}")
@@ -57,7 +56,6 @@ def get_answer(query, dataframe):
     return "I'm sorry, I couldn't find an answer to your question. Can you please rephrase it or ask something different?"
 
 # --- Streamlit UI Elements ---
-# These can come AFTER st.set_page_config()
 st.title("🤖 AI & Robotics Chatbot 🧠")
 st.write("Ask me anything about Artificial Intelligence and Robotics!")
 
