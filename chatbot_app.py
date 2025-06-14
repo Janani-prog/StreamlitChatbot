@@ -1,6 +1,32 @@
 import streamlit as st
 import pandas as pd
 import re # For regular expressions to handle keywords
+from fuzzywuzzy import process
+from fuzzywuzzy import fuzz
+
+synonym_dict = {
+    "ai": ["artificial intelligence", "machine intelligence", "algorithmic intelligence"],
+    "artificial intelligence": ["ai", "machine intelligence", "algorithmic intelligence"],
+    "machine learning": ["ml", "statistical learning", "predictive analytics"],
+    "ml": ["machine learning"],
+    "robotics": ["robot engineering", "robot science"],
+    "robot": ["automaton", "machine"],
+    "computer vision": ["vision systems", "image recognition"],
+    "natural language processing": ["nlp", "language understanding"],
+    "nlp": ["natural language processing"],
+    "technology": ["tech", "innovation", "engineering", "machinery", "tools"],
+    "engineering": ["technology", "design", "construction"],
+    "sensor": ["detector", "probe"],
+    "actuator": ["motor", "driver"],
+    "big data": ["large datasets", "massive data"],
+    "dataset": ["data collection", "data set"],
+    "deep learning": ["deep neural networks"],
+    "neural network": ["neural net", "nn"],
+    "nn": ["neural network"],
+    "cobot": ["collaborative robot"],
+    "collaborative robot": ["cobot"],
+    "swarming robotics": ["robot swarms", "swarm robotics"],
+}
 
 # --- Streamlit UI Configuration (MUST BE THE FIRST STREAMLIT COMMAND) ---
 st.set_page_config(page_title="AI & Robotics Chatbot", layout="centered")
@@ -28,32 +54,43 @@ def load_qa_data(file_path):
 qa_df = load_qa_data(EXCEL_FILE)
 
 # --- Chatbot Logic ---
-def get_answer(query, dataframe):
+
+def normalize_query(query, synonym_dict): #optimize for synonyms(syns) since we cannot know what shortforms/keywords the user will use, so are bot should be optimized to handle alternate keywords and map them to right answer
     query_lower = query.lower()
+    for standardT, syns in synonym_dict.items():
+        for syn in syns:
+            query_lower = query_lower.replace(syn.lower(), standardT.lower())
+    return query_lower
 
+def get_answer(query, dataframe):
+    query_lower = normalize_query(query, synonym_dict)
+    
     # Try exact match first
-    for index, row in dataframe.iterrows():
-        if query_lower == row['question'].lower():
-            return row['answer']
-
+    exact_match = dataframe[dataframe['question'].str.lower() == query_lower.lower()]
+    if not exact_match.empty:
+        return exact_match.iloc[0]['answer']
+    
     # Then try keyword matching (more flexible)
-    # Tokenize the query into individual words and create a regex pattern
     keywords = re.findall(r'\b\w+\b', query_lower)
-    if not keywords:
-        return "I'm sorry, I couldn't understand your question. Please try rephrasing it."
-
-    # Sort keywords by length descending to prioritize longer, more specific matches
-    keywords.sort(key=len, reverse=True)
-
-    for keyword in keywords:
-        # Create a regex pattern to match whole words or parts of words within the question
-        pattern = re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
-
-        for index, row in dataframe.iterrows():
-            if pattern.search(row['question']):
-                return row['answer']
-
-    return "I'm sorry, I couldn't find an answer to your question. Can you please rephrase it or ask something different?"
+    if keywords:
+        for keyword in sorted(keywords, key=len, reverse=True):
+            pattern = re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
+            matches = dataframe[dataframe['question'].str.contains(pattern)]
+            if not matches.empty:
+                return matches.iloc[0]['answer']
+    
+    #Fuzzy match logic
+    questions_list = dataframe['question'].tolist()
+    best_match, score = process.extractOne(
+        query_lower,
+        questions_list,
+        scorer=fuzz.token_set_ratio 
+    )
+    
+    if score >= 70:  # need to test with more scenarios and tweak
+        return dataframe[dataframe['question'] == best_match].iloc[0]['answer']
+    
+    return "I'm sorry, I couldn't find a relevant answer. Could you please rephrase your question?"
 
 # --- Streamlit UI Elements ---
 st.title("🤖 AI & Robotics Chatbot 🧠")
@@ -67,6 +104,7 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+
 
 # Chat input
 if prompt := st.chat_input("Your question..."):
@@ -86,3 +124,7 @@ st.sidebar.header("Instructions")
 st.sidebar.write("Type your question in the chat box below and press Enter.")
 st.sidebar.write("The chatbot will try to find the best answer from its knowledge base.")
 st.sidebar.info(f"Loaded {len(qa_df)} questions and answers from '{EXCEL_FILE}'.")
+
+
+
+
